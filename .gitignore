@@ -1,0 +1,4 @@
+.DS_Store
+.env
+.python-version
+/backend/__pycache__
