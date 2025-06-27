@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Competency Model Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f7;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #1d1d1f;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 900px;
+            height: 700px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 24px 32px;
+            text-align: center;
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 20px;
+            width: 12px;
+            height: 12px;
+            background: #ff5f57;
+            border-radius: 50%;
+            box-shadow: 18px 0 0 #ffbd2e, 36px 0 0 #28ca42;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 4px;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            color: #86868b;
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 24px 32px;
+            overflow-y: auto;
+            background: transparent;
+            scroll-behavior: smooth;
+        }
+
+        .messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            animation: fadeInUp 0.3s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 75%;
+            padding: 14px 18px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.4;
+            font-size: 15px;
+        }
+
+        .message.user .message-content {
+            background: #007aff;
+            color: white;
+            border-bottom-right-radius: 6px;
+            font-weight: 500;
+        }
+
+        .message.bot .message-content {
+            background: rgba(0, 0, 0, 0.04);
+            color: #1d1d1f;
+            border-bottom-left-radius: 6px;
+            font-weight: 400;
+        }
+
+        .message.bot .message-content pre {
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+        }
+
+        .input-container {
+            padding: 20px 32px 24px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .input-form {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 12px 18px;
+            border: 1.5px solid rgba(0, 0, 0, 0.12);
+            border-radius: 22px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.2s ease;
+            background: rgba(255, 255, 255, 0.9);
+            font-family: inherit;
+        }
+
+        .input-field:focus {
+            border-color: #007aff;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+        }
+
+        .send-button {
+            padding: 12px 20px;
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 22px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            min-width: 70px;
+        }
+
+        .send-button:hover {
+            background: #0056d3;
+            transform: translateY(-1px);
+        }
+
+        .send-button:active {
+            transform: translateY(0);
+        }
+
+        .send-button:disabled {
+            background: rgba(0, 0, 0, 0.3);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 16px;
+            color: #86868b;
+            font-size: 14px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 8px;
+            border: 2px solid #e5e5e7;
+            border-top: 2px solid #007aff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .examples {
+            padding: 20px 32px;
+            background: rgba(248, 248, 248, 0.6);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .examples h3 {
+            margin-bottom: 12px;
+            color: #1d1d1f;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .example-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .example-button {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            color: #007aff;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .example-button:hover {
+            background: #007aff;
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .error {
+            color: #d70015;
+            background: rgba(215, 0, 21, 0.1);
+            border: 1px solid rgba(215, 0, 21, 0.2);
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin: 12px 0;
+            font-size: 14px;
+            animation: fadeInUp 0.3s ease-out;
+        }
+
+        .welcome-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                height: 100vh;
+                border-radius: 0;
+                max-width: 100%;
+            }
+
+            .header,
+            .input-container,
+            .examples {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+
+            .messages {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+
+            .message-content {
+                max-width: 85%;
+            }
+
+            .example-buttons {
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .input-form {
+                gap: 8px;
+            }
+
+            .send-button {
+                padding: 12px 16px;
+                min-width: 60px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Competency Model Assistant</h1>
+            <p>Intelligent job role analysis and competency insights</p>
+        </div>
+
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message bot">
+                    <div class="message-content">
+                        <pre><span class="welcome-icon">👋</span>Welcome to your Competency Model Assistant
+
+I specialize in:
+• Comprehensive job role analysis
+• Competency framework development
+• Similar role identification
+• Skills gap analysis
+• Career progression mapping
+
+Start by asking about any job title or role you're interested in exploring.</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="loading" id="loading">
+                Analyzing your request
+            </div>
+
+            <div class="examples">
+                <h3>Quick Start Examples</h3>
+                <div class="example-buttons">
+                    <button class="example-button" onclick="sendExample('Chief Executives')">Chief Executives</button>
+                    <button class="example-button" onclick="sendExample('Data Scientist')">Data Scientist</button>
+                    <button class="example-button" onclick="sendExample('Financial Managers')">Financial
+                        Managers</button>
+                    <button class="example-button" onclick="sendExample('Marketing Managers')">Marketing
+                        Managers</button>
+                    <button class="example-button" onclick="sendExample('Supply Chain Managers')">Supply Chain
+                        Managers</button>
+                    <button class="example-button" onclick="sendExample('Business Analyst')">Business Analyst</button>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <form class="input-form" id="chatForm">
+                    <input type="text" class="input-field" id="messageInput"
+                        placeholder="Enter a job role or ask about competencies..." autocomplete="off">
+                    <button type="submit" class="send-button" id="sendButton">Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatForm = document.getElementById('chatForm');
+        const loading = document.getElementById('loading');
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            if (isUser) {
+                contentDiv.textContent = content;
+            } else {
+                const preElement = document.createElement('pre');
+                preElement.textContent = content;
+                contentDiv.appendChild(preElement);
+            }
+
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+
+            // Smooth scroll to bottom
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 100);
+        }
+
+        function showLoading() {
+            loading.classList.add('show');
+            sendButton.disabled = true;
+            sendButton.textContent = '...';
+        }
+
+        function hideLoading() {
+            loading.classList.remove('show');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = `Unable to process request: ${message}`;
+            messagesContainer.appendChild(errorDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        async function sendMessage(message) {
+            if (!message.trim()) return;
+
+            // Add user message
+            addMessage(message, true);
+
+            // Clear input immediately for better UX
+            messageInput.value = '';
+
+            // Show loading
+            showLoading();
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with status ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addMessage(data.data.response);
+
+                    // Enhanced analysis display for job analysis
+                    if (data.data.type === 'job_analysis' && data.data.analysis) {
+                        const analysis = data.data.analysis;
+
+                        if (analysis.competency_framework) {
+                            let frameworkText = '\n📊 Key Competency Framework\n\n';
+
+                            for (const [scale, competencies] of Object.entries(analysis.competency_framework)) {
+                                frameworkText += `${scale.replace(/_/g, ' ').toUpperCase()}:\n`;
+                                competencies.slice(0, 3).forEach((comp, index) => {
+                                    const score = comp.data_value ? comp.data_value.toFixed(1) : 'N/A';
+                                    frameworkText += `  ${index + 1}. ${comp.element_name} (${score})\n`;
+                                });
+                                frameworkText += '\n';
+                            }
+
+                            addMessage(frameworkText);
+                        }
+                    }
+                } else {
+                    showError(data.error || 'An unexpected error occurred');
+                }
+            } catch (error) {
+                console.error('Communication error:', error);
+                if (error.message.includes('Failed to fetch')) {
+                    showError('Cannot connect to server. Please ensure the backend service is running on localhost:5000');
+                } else {
+                    showError('Network error occurred. Please check your connection and try again.');
+                }
+            } finally {
+                hideLoading();
+                messageInput.focus();
+            }
+        }
+
+        function sendExample(text) {
+            messageInput.value = text;
+            sendMessage(text);
+        }
+
+        // Enhanced event listeners
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (message && !sendButton.disabled) {
+                sendMessage(message);
+            }
+        });
+
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !sendButton.disabled) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Auto-focus and smooth interactions
+        window.addEventListener('load', () => {
+            messageInput.focus();
+
+            // Add subtle entrance animation
+            document.querySelector('.container').style.opacity = '0';
+            document.querySelector('.container').style.transform = 'translateY(20px)';
+
+            setTimeout(() => {
+                document.querySelector('.container').style.transition = 'all 0.6s ease-out';
+                document.querySelector('.container').style.opacity = '1';
+                document.querySelector('.container').style.transform = 'translateY(0)';
+            }, 100);
+        });
+
+        // Keep input focused for better UX
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.example-button') && !e.target.closest('.message-content')) {
+                messageInput.focus();
+            }
+        });
+    </script>
+</body>
+
+</html>
