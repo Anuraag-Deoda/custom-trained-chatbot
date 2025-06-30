@@ -1,5 +1,3 @@
-# backend/app.py - Flask API for Competency Model Chatbot
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -66,7 +64,7 @@ def analyze_job():
         
         return jsonify({
             "success": True,
-            "data": result
+            "data": result 
         })
         
     except Exception as e:
@@ -95,7 +93,7 @@ def search_jobs():
                 "error": "query cannot be empty"
             }), 400
         
-        # Search for similar jobs
+        # Search for similar jobs (now based on vectors enriched with abilities)
         similar_jobs = vector_db.search_similar_jobs(query, top_k)
         
         return jsonify({
@@ -117,13 +115,14 @@ def search_jobs():
 def get_job_competencies(onet_soc_code):
     """Get detailed competencies for a specific job"""
     try:
+        # This will now return both skills and abilities
         competencies = vector_db.get_job_competencies(onet_soc_code)
         
         return jsonify({
             "success": True,
             "data": {
                 "onet_soc_code": onet_soc_code,
-                "competencies": competencies
+                "competencies": competencies # This 'competencies' now includes skills and abilities
             }
         })
         
@@ -157,16 +156,23 @@ def chat():
             # Treat as job analysis request
             result = analyzer.analyze_job_role(message)
             
-            response = f"I found information about {message}. Here's the competency analysis:\n\n"
+            response = f"I found information about {message}. Here's a summary of the competency analysis:\n\n"
             
             if "job_analysis" in result:
                 best_match = result["job_analysis"]["best_match"]
                 response += f"Best match: {best_match['title']} (similarity: {best_match['score']:.2f})\n\n"
             
             if "recommendations" in result:
-                response += "Key recommendations:\n"
-                for i, rec in enumerate(result["recommendations"][:3], 1):
-                    response += f"{i}. {rec}\n"
+                # The recommendations are already pre-formatted in _generate_recommendations
+                for rec in result["recommendations"]:
+                    response += f"{rec}\n"
+            
+            # NEW: Add the detailed formatted framework summary from the backend
+            if "formatted_framework_summary" in result:
+                response += result["formatted_framework_summary"]
+
+            response += "\nFor a full, structured breakdown of all skills and abilities, please refer to the 'analysis' field in the JSON response."
+
             print(f"Response: {response}") 
             print(f"Result: {result}")
             print(f"Type: job_analysis")
@@ -178,7 +184,7 @@ def chat():
                 "success": True,
                 "data": {
                     "response": response,
-                    "analysis": result,
+                    "analysis": result, # This 'analysis' object contains the full competency framework with skills and abilities
                     "type": "job_analysis"
                 }
             })
@@ -248,7 +254,8 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({
-        "error": "Internal server error"
+        "error": "Internal server error",
+        "message": str(error) # Include error message for debugging
     }), 500
 
 if __name__ == "__main__":
