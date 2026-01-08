@@ -45,6 +45,9 @@ export const useChatStore = create<ChatState>()(
             role: 'assistant',
             timestamp: new Date(),
             analysis: result.analysis,
+            matchedJob: result.matched_job,
+            similarJobs: result.similar_jobs,
+            followUpSuggestions: result.follow_up_suggestions,
           };
 
           set({

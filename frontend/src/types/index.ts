@@ -93,6 +93,20 @@ export interface Stats {
   total_tasks: number;
 }
 
+// Follow-up Suggestion Type
+export interface FollowUpSuggestion {
+  text: string;
+  action: string;
+  type: 'compare' | 'skills' | 'career' | 'similar' | 'gap_analysis';
+}
+
+// Similar Job Type
+export interface SimilarJob {
+  onet_soc_code: string;
+  title: string;
+  similarity_score: number;
+}
+
 // Chat Types
 export interface ChatMessage {
   id: string;
@@ -105,6 +119,9 @@ export interface ChatMessage {
       edges: Array<{ from: number; to: number }>;
     };
   };
+  matchedJob?: string;
+  similarJobs?: SimilarJob[];
+  followUpSuggestions?: FollowUpSuggestion[];
 }
 
 // API Response Types

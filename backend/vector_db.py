@@ -198,10 +198,97 @@ class CompetencyVectorDB:
 class CompetencyAnalyzer:
     """
     Analyzes job roles using the vector DB and an LLM, with a caching layer.
+    Includes an agentic layer for generating contextual follow-up suggestions.
     """
     def __init__(self, vector_db: CompetencyVectorDB):
         self.vector_db = vector_db
         self.cache = vector_db.cache
+
+    def get_similar_jobs(self, onet_code: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Finds jobs similar to the given job based on vector similarity.
+        """
+        try:
+            engine = create_engine(DATABASE_URL)
+            # Get the job's embedding text
+            query = text("SELECT title FROM job_competencies WHERE onet_soc_code = :code LIMIT 1")
+            result = pd.read_sql(query, engine, params={'code': onet_code})
+            if result.empty:
+                return []
+
+            job_title = result.iloc[0]['title']
+            query_embedding = self.vector_db.model.encode(job_title).tolist()
+
+            # Query Pinecone for similar jobs (get more to filter out self)
+            results = self.vector_db.index.query(
+                vector=query_embedding,
+                top_k=limit + 1,
+                include_metadata=True
+            )
+
+            similar_jobs = []
+            for match in results['matches']:
+                if match['metadata']['onet_soc_code'] != onet_code:
+                    similar_jobs.append({
+                        'onet_soc_code': match['metadata']['onet_soc_code'],
+                        'title': match['metadata']['title'],
+                        'similarity_score': round(match['score'] * 100, 1)
+                    })
+                if len(similar_jobs) >= limit:
+                    break
+
+            return similar_jobs
+        except Exception as e:
+            print(f"Error getting similar jobs: {e}")
+            return []
+
+    def generate_follow_up_suggestions(self, query: str, matched_job: Dict, similar_jobs: List[Dict]) -> List[Dict[str, str]]:
+        """
+        Generates contextual follow-up suggestions based on the analysis results.
+        Returns a list of suggestion objects with 'text' and 'action' keys.
+        """
+        suggestions = []
+        job_title = matched_job.get('title', '')
+        onet_code = matched_job.get('onet_soc_code', '')
+
+        # Always suggest exploring similar roles
+        if similar_jobs:
+            top_similar = similar_jobs[0]['title']
+            suggestions.append({
+                'text': f"Compare with {top_similar}",
+                'action': f"Compare {job_title} with {top_similar}",
+                'type': 'compare'
+            })
+
+        # Suggest skill deep-dive
+        suggestions.append({
+            'text': f"What are the key skills for {job_title}?",
+            'action': f"What are the key skills for {job_title}?",
+            'type': 'skills'
+        })
+
+        # Suggest career path
+        suggestions.append({
+            'text': f"Show career progression from {job_title}",
+            'action': f"What career paths lead from {job_title}?",
+            'type': 'career'
+        })
+
+        # Suggest salary/demand info (placeholder for future)
+        suggestions.append({
+            'text': "Show similar job roles",
+            'action': f"What jobs are similar to {job_title}?",
+            'type': 'similar'
+        })
+
+        # Suggest gap analysis
+        suggestions.append({
+            'text': "Analyze my skill gaps for this role",
+            'action': f"skill_gap_analysis:{onet_code}",
+            'type': 'gap_analysis'
+        })
+
+        return suggestions[:4]  # Return top 4 suggestions
 
     def analyze_job_role(self, job_title_query: str, top_k: int = 3) -> Dict[str, Any]:
         """Provides a comprehensive analysis of a job role, with caching for the final analysis."""
@@ -222,16 +309,28 @@ class CompetencyAnalyzer:
 
             competency_summary = self._create_competency_summary(df_competencies)
             llm_analysis = self._get_llm_analysis(job_title_query, best_match['title'], competency_summary)
-            
+
             # FIX: Generate structural data for the graph visualization
             structural_diagram = self._create_structural_data(df_competencies, best_match['title'])
+
+            # Agentic layer: Get similar jobs and generate follow-up suggestions
+            similar_jobs = self.get_similar_jobs(best_match_code, limit=5)
+            matched_job_info = {
+                'title': best_match['title'],
+                'onet_soc_code': best_match_code
+            }
+            follow_up_suggestions = self.generate_follow_up_suggestions(
+                job_title_query, matched_job_info, similar_jobs
+            )
 
             return {
                 "query": job_title_query,
                 "best_match_found": best_match['title'],
                 "match_details": [r['metadata'] for r in results['matches']],
                 "llm_generated_analysis": llm_analysis,
-                "structural_diagram": structural_diagram # Add the diagram to the response
+                "structural_diagram": structural_diagram,
+                "similar_jobs": similar_jobs,
+                "follow_up_suggestions": follow_up_suggestions
             }
         except Exception as e:
             print(f"An error occurred during job role analysis: {e}", exc_info=True)

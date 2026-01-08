@@ -1,16 +1,35 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Trash2, User, Bot, Sparkles } from 'lucide-react';
+import { Send, Trash2, User, Bot, Sparkles, ArrowRight, GitCompare, Lightbulb, TrendingUp, Users, Target } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { useChatStore } from '../store/useChatStore';
+import type { FollowUpSuggestion } from '../types';
 
-const suggestions = [
+const initialSuggestions = [
   'Tell me about Data Scientist roles',
   'What skills do Financial Managers need?',
   'Compare Software Developer and Data Analyst',
   'What are the key abilities for Project Managers?',
 ];
+
+// Helper function to get icon for suggestion type
+const getSuggestionIcon = (type: FollowUpSuggestion['type']) => {
+  switch (type) {
+    case 'compare':
+      return <GitCompare className="w-3.5 h-3.5" />;
+    case 'skills':
+      return <Lightbulb className="w-3.5 h-3.5" />;
+    case 'career':
+      return <TrendingUp className="w-3.5 h-3.5" />;
+    case 'similar':
+      return <Users className="w-3.5 h-3.5" />;
+    case 'gap_analysis':
+      return <Target className="w-3.5 h-3.5" />;
+    default:
+      return <ArrowRight className="w-3.5 h-3.5" />;
+  }
+};
 
 export default function Chat() {
   const [input, setInput] = useState('');
@@ -39,6 +58,19 @@ export default function Chat() {
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
     inputRef.current?.focus();
+  };
+
+  const handleFollowUpClick = async (suggestion: FollowUpSuggestion) => {
+    // For gap analysis, we could navigate to a different page or show a modal
+    // For now, we'll send the action as a new message
+    if (suggestion.type === 'gap_analysis') {
+      // Could navigate to skill mapper page with pre-selected job
+      setInput(suggestion.text);
+      inputRef.current?.focus();
+    } else {
+      // Send the action as a new message
+      await sendMessage(suggestion.action);
+    }
   };
 
   return (
@@ -80,7 +112,7 @@ export default function Chat() {
                 I can help you understand what it takes to succeed in any role.
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                {suggestions.map((suggestion) => (
+                {initialSuggestions.map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => handleSuggestionClick(suggestion)}
@@ -108,23 +140,47 @@ export default function Chat() {
                       <Bot className="w-5 h-5 text-white" />
                     </div>
                   )}
-                  <div
-                    className={`max-w-[80%] px-4 py-3 rounded-2xl ${
-                      message.role === 'user'
-                        ? 'bg-primary-600 text-white rounded-br-md'
-                        : 'bg-gray-100 text-gray-900 rounded-bl-md'
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {message.content}
-                    </p>
-                    <p
-                      className={`text-xs mt-2 ${
-                        message.role === 'user' ? 'text-white/60' : 'text-gray-400'
+                  <div className="flex flex-col gap-2 max-w-[80%]">
+                    <div
+                      className={`px-4 py-3 rounded-2xl ${
+                        message.role === 'user'
+                          ? 'bg-primary-600 text-white rounded-br-md'
+                          : 'bg-gray-100 text-gray-900 rounded-bl-md'
                       }`}
                     >
-                      {new Date(message.timestamp).toLocaleTimeString()}
-                    </p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                        {message.content}
+                      </p>
+                      <p
+                        className={`text-xs mt-2 ${
+                          message.role === 'user' ? 'text-white/60' : 'text-gray-400'
+                        }`}
+                      >
+                        {new Date(message.timestamp).toLocaleTimeString()}
+                      </p>
+                    </div>
+
+                    {/* Follow-up Suggestions - Only show for assistant messages */}
+                    {message.role === 'assistant' && message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="flex flex-wrap gap-2 mt-1"
+                      >
+                        {message.followUpSuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleFollowUpClick(suggestion)}
+                            disabled={loading}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:border-primary-300 hover:bg-primary-50 rounded-full text-xs font-medium text-gray-700 hover:text-primary-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {getSuggestionIcon(suggestion.type)}
+                            {suggestion.text}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
                   </div>
                   {message.role === 'user' && (
                     <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center shrink-0">

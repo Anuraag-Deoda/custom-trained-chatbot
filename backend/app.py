@@ -99,10 +99,13 @@ def chat():
             "analysis": {
                 "structural_diagram": analysis_result.get("structural_diagram", {"nodes": [], "edges": []})
             },
-            "type": "job_analysis"
+            "type": "job_analysis",
+            "matched_job": analysis_result.get("best_match_found", ""),
+            "similar_jobs": analysis_result.get("similar_jobs", []),
+            "follow_up_suggestions": analysis_result.get("follow_up_suggestions", [])
         }
 
-        print(f"Analysis result==============================:\n\n {response_data}\n\n\n =========================")
+        logger.info(f"Analysis completed for '{message}' - matched to '{response_data['matched_job']}'")
 
         return jsonify({"success": True, "data": response_data})
 

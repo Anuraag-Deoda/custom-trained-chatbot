@@ -11,6 +11,8 @@ import type {
   CompareResult,
   SearchResult,
   ChatMessage,
+  FollowUpSuggestion,
+  SimilarJob,
 } from '../types';
 
 const API_BASE = '/api';
@@ -96,6 +98,9 @@ export async function sendChatMessage(message: string): Promise<{
   response: string;
   analysis?: ChatMessage['analysis'];
   type: string;
+  matched_job?: string;
+  similar_jobs?: SimilarJob[];
+  follow_up_suggestions?: FollowUpSuggestion[];
 }> {
   const { data } = await api.post('/chat', { message });
   return data.data;
