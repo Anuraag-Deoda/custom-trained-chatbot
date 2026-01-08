@@ -2,199 +2,196 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import os
+import re
 
-# Load environment variables from .env file
+# --- Configuration ---
+# Load environment variables from a .env file if it exists
 load_dotenv()
 
-OCCUPATION_DATA_PATH = '../data/OccupationData.xlsx'
-SKILLS_DATA_PATH = '../data/Skills.xlsx'
-ABILITIES_DATA_PATH = '../data/Abilities.xlsx' # New: Path for Abilities data
+# Define file paths for all O*NET data sources.
+BASE_DATA_PATH = os.getenv('DATA_PATH', '../data') 
+OCCUPATION_DATA_PATH = os.path.join(BASE_DATA_PATH, 'OccupationData.xlsx')
+SKILLS_DATA_PATH = os.path.join(BASE_DATA_PATH, 'Skills.xlsx')
+ABILITIES_DATA_PATH = os.path.join(BASE_DATA_PATH, 'Abilities.xlsx')
+KNOWLEDGE_DATA_PATH = os.path.join(BASE_DATA_PATH, 'Knowledge.xlsx')
+TASKS_DATA_PATH = os.path.join(BASE_DATA_PATH, 'Tasks.xlsx')
+
 DATABASE_URL = os.getenv('DATABASE_URL')
+ROW_LIMIT = None # Set to None to process all rows
 
-ROW_LIMIT = 2200 # Limit for processing rows, adjust as needed for your 80k+ line file
+# --- 1. Intelligent Data Extraction and Cleaning ---
 
-# --- 1. Data Extraction --- #
-def extract_data(occupation_path, skills_path, abilities_path, row_limit=None):
+def clean_column_names(df):
     """
-    Extracts data from Occupation, Skills, and Abilities Excel files.
+    Standardizes all column names in a DataFrame to a consistent format.
     """
-    print(f"Extracting data from {occupation_path}, {skills_path}, and {abilities_path}...")
-    try:
-        df_occupation = pd.read_excel(occupation_path, nrows=row_limit)
-        df_skills = pd.read_excel(skills_path, nrows=row_limit)
-        df_abilities = pd.read_excel(abilities_path, nrows=row_limit)
-        print("Data extracted successfully.")
-        return df_occupation, df_skills, df_abilities
-    except FileNotFoundError as e:
-        print(f"Error: One or more Excel files not found. Please check paths.\n{e}")
-        exit()
-    except Exception as e:
-        print(f"An error occurred during data extraction: {e}")
-        exit()
-
-# --- 2. Data Cleaning and Transformation --- #
-def clean_and_standardize_element_df(df, type_name):
-    """
-    Cleans and standardizes column names and values in the skills or abilities DataFrame.
-    """
-    print(f"Cleaning and standardizing {type_name} data...")
-
-    # Standardize column names
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.replace(" ", "_")
-        .str.replace("*", "", regex=False)
-        .str.lower()
-    )
-
-    print(f"{type_name} DataFrame columns before renaming: {df.columns.tolist()}")
-
-    # Rename all known variants of onet_soc_code
-    df = df.rename(columns={
-        'onet-soc-code': 'onet_soc_code',
-        'onet-soc_code': 'onet_soc_code',
-        'o_net-soc-code': 'onet_soc_code',
-        'o_net-soc_code': 'onet_soc_code',
-        'o_net_soc_code': 'onet_soc_code'
-    })
-
-    if 'onet_soc_code' not in df.columns:
-        raise KeyError(f"'onet_soc_code' column not found in {type_name} DataFrame after renaming.")
-
-    # Fill NaN values in not_relevant if it exists
-    if 'not_relevant' in df.columns:
-        df['not_relevant'] = df['not_relevant'].fillna('N')
-
-    # Convert 'data_value' to numeric
-    if 'data_value' in df.columns:
-        df['data_value'] = pd.to_numeric(df['data_value'], errors='coerce')
-        df = df.dropna(subset=['data_value'])
-
-    # Convert 'date' column to datetime if present
-    if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'], format='%m/%Y', errors='coerce')
-
-    print(f"{type_name} DataFrame columns after cleaning: {df.columns.tolist()}")
+    cleaned_columns = {}
+    for col in df.columns:
+        new_col = col.strip().lower()
+        new_col = re.sub(r'[^a-z0-9]+', '_', new_col)
+        
+        if 'o_net_soc_code' in new_col:
+            cleaned_columns[col] = 'onet_soc_code'
+        else:
+            cleaned_columns[col] = new_col
+            
+    df = df.rename(columns=cleaned_columns)
     return df
-def transform_data(df_occupation, df_skills, df_abilities):
-    """
-    Cleans, transforms, and combines occupation, skills, and abilities data.
-    """
-    print("Cleaning and transforming data...")
 
-    # 1. Clean and standardize occupation data
-    df_occupation.columns = (
-        df_occupation.columns
-        .str.strip()
-        .str.replace(" ", "_")
-        .str.replace("*", "", regex=False)
-        .str.lower()
+def process_source_file(file_path, file_type, row_limit=None):
+    """
+    Reads an Excel file, cleans it, and prepares it for transformation.
+    """
+    print(f"Processing {file_type} from {file_path}...")
+    try:
+        df = pd.read_excel(file_path, nrows=row_limit)
+    except FileNotFoundError:
+        print(f"ERROR: File not found at {file_path}. Please check the path.")
+        return None
+    except Exception as e:
+        print(f"ERROR: Could not read Excel file {file_path}. Reason: {e}")
+        return None
+
+    df = clean_column_names(df)
+    
+    if 'onet_soc_code' not in df.columns:
+        print(f"ERROR: 'onet_soc_code' column could not be identified in {file_type}. Skipping file.")
+        return None
+
+    if file_type in ['Skills', 'Abilities', 'Knowledge']:
+        df['element_type'] = file_type.rstrip('s')
+        numeric_cols = ['data_value', 'n', 'standard_error', 'lower_ci_bound', 'upper_ci_bound']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        if 'not_relevant' in df.columns:
+            df['not_relevant'] = df['not_relevant'].fillna('N')
+        if 'recommend_suppress' in df.columns:
+            df['recommend_suppress'] = df['recommend_suppress'].fillna('N')
+        
+        df.dropna(subset=['data_value'], inplace=True)
+
+    elif file_type == 'Tasks':
+        df['element_type'] = 'Task'
+        df = df.rename(columns={'task_id': 'element_id', 'task': 'element_name'})
+        
+        if 'task_type' in df.columns:
+            df['task_type'] = df['task_type'].fillna('Not Specified')
+        
+        if 'data_value' not in df.columns:
+            df['data_value'] = 1.0
+        if 'scale_name' not in df.columns:
+            df['scale_name'] = 'Task Relevance'
+            
+        df.dropna(subset=['element_name'], inplace=True)
+
+    elif file_type == 'Occupations':
+        if 'description' in df.columns:
+            df['description'] = df['description'].fillna('No description available.')
+        df = df.drop_duplicates(subset=['onet_soc_code'])
+
+    if 'date' in df.columns:
+        # FIX: Specify date format to resolve UserWarning and ensure correct parsing.
+        df['date'] = pd.to_datetime(df['date'], format='%m/%Y', errors='coerce')
+        
+    print(f"Successfully cleaned {len(df)} rows for {file_type}.")
+    return df
+
+# --- 2. Data Transformation and Combination ---
+
+def transform_and_combine(dataframes):
+    """
+    Combines all processed dataframes into a single, unified structure.
+    """
+    print("Combining all data sources...")
+    
+    occupations_df = dataframes.get('Occupations')
+    if occupations_df is None:
+        print("ERROR: Occupation data is missing. Cannot proceed with merging.")
+        return None
+
+    element_dfs = [df for key, df in dataframes.items() if key != 'Occupations' and df is not None]
+    
+    if not element_dfs:
+        print("ERROR: No competency or task data found to process.")
+        return None
+
+    combined_elements_df = pd.concat(element_dfs, ignore_index=True, sort=False)
+    
+    # FIX: Drop the 'title' column from the combined elements before merging.
+    # This prevents the 'title_x' and 'title_y' collision that causes the KeyError.
+    # The authoritative title will come from the occupations_df.
+    if 'title' in combined_elements_df.columns:
+        combined_elements_df = combined_elements_df.drop(columns=['title'])
+
+    # Merge with occupation data to add the job title and description
+    occupation_meta_cols = ['onet_soc_code', 'title', 'description']
+    final_df = pd.merge(
+        combined_elements_df,
+        occupations_df[occupation_meta_cols],
+        on='onet_soc_code',
+        how='left'
     )
-    print("Occupation DataFrame columns before renaming:", df_occupation.columns.tolist())
+    
+    # This dropna call will now work correctly as 'title' will exist.
+    final_df.dropna(subset=['title'], inplace=True)
+    
+    print(f"Successfully combined all data into a single DataFrame with {len(final_df)} rows.")
+    return final_df
 
-    # Rename onet_soc_code variations
-    df_occupation = df_occupation.rename(columns={
-        'onet-soc-code': 'onet_soc_code',
-        'onet-soc_code': 'onet_soc_code',
-        'o_net-soc-code': 'onet_soc_code',
-        'o_net-soc_code': 'onet_soc_code',
-        'o_net_soc_code': 'onet_soc_code'
-    })
+# --- 3. Data Loading ---
 
-    if 'onet_soc_code' not in df_occupation.columns:
-        raise KeyError("Could not find 'onet_soc_code' in occupation data.")
-
-    df_occupation = df_occupation.drop_duplicates(subset=['onet_soc_code'])
-    df_occupation['description'] = df_occupation['description'].fillna('')
-    print(f"Occupation DataFrame columns after cleaning: {df_occupation.columns.tolist()}")
-
-    # 2. Clean and standardize skills and abilities
-    df_skills_cleaned = clean_and_standardize_element_df(df_skills.copy(), "Skills")
-    df_abilities_cleaned = clean_and_standardize_element_df(df_abilities.copy(), "Abilities")
-
-    # Common expected columns
-    columns_for_elements = [
-        'onet_soc_code', 'element_id', 'element_name', 'scale_id', 'scale_name',
-        'data_value', 'n', 'standard_error', 'lower_ci_bound', 'upper_ci_bound',
-        'recommend_suppress', 'not_relevant', 'date', 'domain_source'
-    ]
-
-    # Filter and label
-    df_skills_filtered = df_skills_cleaned[df_skills_cleaned.columns.intersection(columns_for_elements)].copy()
-    df_abilities_filtered = df_abilities_cleaned[df_abilities_cleaned.columns.intersection(columns_for_elements)].copy()
-
-    df_skills_filtered['element_type'] = 'Skill'
-    df_abilities_filtered['element_type'] = 'Ability'
-
-    # 3. Combine skills and abilities
-    df_elements = pd.concat([df_skills_filtered, df_abilities_filtered], ignore_index=True)
-    df_elements = df_elements.drop_duplicates()
-
-    # 4. Merge with occupation metadata
-    required_cols = ['onet_soc_code', 'title', 'description']
-    missing_cols = [col for col in required_cols if col not in df_occupation.columns]
-    if missing_cols:
-        raise KeyError(f"Missing columns in occupation data for merge: {missing_cols}")
-
-    df_occupation_for_merge = df_occupation[required_cols]
-    df_combined = pd.merge(df_elements, df_occupation_for_merge, on='onet_soc_code', how='left')
-
-    print("Data cleaned and transformed successfully.")
-    return df_combined
-# --- 3. Data Loading to PostgreSQL --- #
-def load_data_to_db(df, db_url):
+def load_to_postgres(df, db_url):
     """
-    Loads the combined DataFrame into the PostgreSQL 'job_competencies' table.
+    Loads the final, combined DataFrame into a PostgreSQL database.
     """
-    print("Loading data to PostgreSQL database...")
+    if df is None or df.empty:
+        print("No data to load. Aborting database operation.")
+        return
+        
+    if not db_url:
+        print("ERROR: DATABASE_URL environment variable is not set. Cannot connect.")
+        return
+
+    print("Connecting to PostgreSQL and loading data...")
     try:
         engine = create_engine(db_url)
+        table_name = 'job_competencies'
+        
+        # Use pandas to_sql for efficient bulk loading and schema creation.
+        df.to_sql(
+            table_name,
+            engine,
+            if_exists='replace',
+            index=False,
+            chunksize=1000
+        )
+        
         with engine.connect() as connection:
-            # NEW: Drop the table if it exists to ensure schema updates
-            connection.execute(text("DROP TABLE IF EXISTS job_competencies;"))
-            connection.commit() # Commit the drop operation
+            connection.execute(text(f'ALTER TABLE {table_name} ADD COLUMN id SERIAL PRIMARY KEY;'))
+            connection.commit()
 
-            # Create table with the latest schema (including element_type)
-            connection.execute(text("""
-CREATE TABLE job_competencies (
-    id SERIAL PRIMARY KEY,
-    onet_soc_code VARCHAR(255) NOT NULL,
-    title VARCHAR(255),
-    description TEXT,
-    element_id VARCHAR(255),
-    element_name VARCHAR(255),
-    element_type VARCHAR(50), 
-    scale_id VARCHAR(255),
-    scale_name VARCHAR(255),
-    data_value NUMERIC,
-    n INTEGER,
-    standard_error NUMERIC,
-    lower_ci_bound NUMERIC,
-    upper_ci_bound NUMERIC,
-    recommend_suppress VARCHAR(10),
-    not_relevant VARCHAR(10),
-    date DATE,
-    domain_source VARCHAR(255)
-);
-"""))
-            connection.commit() # Commit the create operation
-            
-            # Load data into the table
-            df.to_sql('job_competencies', engine, if_exists='append', index=False)
-            print("Data loaded to job_competencies table successfully.")
+        print(f"Successfully loaded {len(df)} records into '{table_name}' table.")
+
     except Exception as e:
         print(f"An error occurred during database loading: {e}")
-        exit()
 
-# --- Main Execution --- #
+# --- Main Execution Block ---
+
 if __name__ == "__main__":
-    # Extract data from all three sources
-    df_occ, df_sk, df_ab = extract_data(OCCUPATION_DATA_PATH, SKILLS_DATA_PATH, ABILITIES_DATA_PATH, ROW_LIMIT)
-    
-    # Transform and combine the data
-    df_combined = transform_data(df_occ, df_sk, df_ab)
-    
-    # Load the combined data to the database
-    load_data_to_db(df_combined, DATABASE_URL)
-    print("Data ingestion process completed.")
+    print("--- Starting O*NET Data Ingestion Pipeline ---")
+
+    sources = {
+        'Occupations': OCCUPATION_DATA_PATH,
+        'Skills': SKILLS_DATA_PATH,
+        'Abilities': ABILITIES_DATA_PATH,
+        'Knowledge': KNOWLEDGE_DATA_PATH,
+        'Tasks': TASKS_DATA_PATH
+    }
+
+    processed_dataframes = {name: process_source_file(path, name, ROW_LIMIT) for name, path in sources.items()}
+    final_dataframe = transform_and_combine(processed_dataframes)
+    load_to_postgres(final_dataframe, DATABASE_URL)
+
+    print("--- Data Ingestion Pipeline Completed ---")

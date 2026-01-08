@@ -5,14 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Competency Model Assistant</title>
-
+    
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
+    
     <style>
         :root {
             --primary-color: #6366f1;
@@ -62,20 +62,10 @@
         }
 
         @keyframes float {
-            0% {
-                transform: translateY(100vh) rotate(0deg);
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-100px) rotate(360deg);
-                opacity: 0;
-            }
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
         }
 
         .main-container {
@@ -151,14 +141,13 @@
         }
 
         @keyframes messageSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px) scale(0.95);
+            from { 
+                opacity: 0; 
+                transform: translateY(20px) scale(0.95); 
             }
-
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
+            to { 
+                opacity: 1; 
+                transform: translateY(0) scale(1); 
             }
         }
 
@@ -236,25 +225,12 @@
             animation: pulse 1.4s ease-in-out infinite both;
         }
 
-        .spinner-dot:nth-child(1) {
-            animation-delay: -0.32s;
-        }
-
-        .spinner-dot:nth-child(2) {
-            animation-delay: -0.16s;
-        }
+        .spinner-dot:nth-child(1) { animation-delay: -0.32s; }
+        .spinner-dot:nth-child(2) { animation-delay: -0.16s; }
 
         @keyframes pulse {
-            0%,
-            80%,
-            100% {
-                transform: scale(0);
-                opacity: 0.5;
-            }
-            40% {
-                transform: scale(1);
-                opacity: 1;
-            }
+            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
         }
 
         .examples-section {
@@ -397,25 +373,25 @@
             .chat-header {
                 padding: 0.875rem 1rem;
             }
-
+            
             .messages-container {
                 padding: 0.875rem 1rem;
             }
-
+            
             .examples-section,
             .input-section {
                 padding: 0.875rem 1rem;
             }
-
+            
             .message-bubble {
                 max-width: 85%;
                 padding: 0.75rem 1rem;
             }
-
+            
             .header-title {
                 font-size: 1.25rem;
             }
-
+            
             .example-btn {
                 font-size: 0.75rem;
                 padding: 0.4rem 0.75rem;
@@ -432,11 +408,11 @@
                 padding: 0.75rem 1rem;
                 font-size: 0.9rem;
             }
-
+            
             .send-btn {
                 padding: 0.75rem 1rem;
             }
-
+            
             .examples-title {
                 font-size: 0.85rem;
             }
@@ -448,15 +424,8 @@
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* WhatsApp-like status bar for mobile */
@@ -526,8 +495,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="mt-3 mb-0"><small>Start by asking about any job title or role you're interested in
-                                    exploring.</small></p>
+                            <p class="mt-3 mb-0"><small>Start by asking about any job title or role you're interested in exploring.</small></p>
                         </div>
                     </div>
                 </div>
@@ -576,8 +544,13 @@
             <div class="input-section">
                 <form id="chatForm" class="w-100">
                     <div class="input-group-custom">
-                        <input type="text" class="message-input" id="messageInput"
-                            placeholder="Enter a job role or ask about competencies..." autocomplete="off">
+                        <input 
+                            type="text" 
+                            class="message-input" 
+                            id="messageInput"
+                            placeholder="Enter a job role or ask about competencies..."
+                            autocomplete="off"
+                        >
                         <button type="submit" class="send-btn" id="sendButton">
                             <i class="bi bi-send"></i>
                             <span class="d-none d-sm-inline">Send</span>
@@ -727,7 +700,7 @@
                             if (analysis.competency_framework.Skill && analysis.competency_framework.Skill.Importance) {
                                 const skills = analysis.competency_framework.Skill.Importance;
                                 const sortedSkills = [...skills].sort((a, b) => b.data_value - a.data_value);
-
+                                
                                 frameworkText += `--- SKILLS ---\n`;
                                 sortedSkills.slice(0, 3).forEach((comp, index) => {
                                     const score = comp.data_value ? comp.data_value.toFixed(1) : 'N/A';
@@ -833,6 +806,7 @@
                                         if (existingModal) {
                                             existingModal.remove();
                                         }
+                                        
                                         document.body.insertAdjacentHTML('beforeend', modalContent);
                                         const modal = new bootstrap.Modal(document.getElementById('nodeModal'));
                                         modal.show();
@@ -888,7 +862,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             createParticles();
             messageInput.focus();
-
+            
             // Add smooth entrance animation
             setTimeout(() => {
                 const container = document.querySelector('.chat-wrapper');
@@ -902,8 +876,8 @@
 
         // Keep input focused for better UX
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.example-btn') &&
-                !e.target.closest('.message-bubble') &&
+            if (!e.target.closest('.example-btn') && 
+                !e.target.closest('.message-bubble') && 
                 !e.target.closest('.modal')) {
                 messageInput.focus();
             }
@@ -915,7 +889,7 @@
             if (e.key === 'Escape') {
                 messageInput.focus();
             }
-
+            
             // Ctrl/Cmd + K to clear chat (optional feature)
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
@@ -936,6 +910,7 @@
         messageInput.addEventListener('input', () => {
             clearTimeout(typingTimer);
             sendButton.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            
             typingTimer = setTimeout(() => {
                 sendButton.style.background = 'linear-gradient(135deg, var(--primary-color), var(--primary-dark))';
             }, 1000);

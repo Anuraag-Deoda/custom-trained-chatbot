@@ -1,272 +1,150 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os
-import json
-from vector_db import CompetencyVectorDB, CompetencyAnalyzer  # Updated import
 from dotenv import load_dotenv
 import logging
+from vector_db import CacheManager, CompetencyVectorDB, CompetencyAnalyzer
 
-# Load environment variables
+
+
+# Load environment variables from a .env file
 load_dotenv()
 
-# Initialize Flask app
+# --- App Initialization ---
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)  # Enable CORS for all routes, essential for local development
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging for better traceability
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize global components
+# --- Global Components ---
+# These will be initialized once on startup
+cache = None
 vector_db = None
 analyzer = None
 
 def initialize_components():
-    """Initialize vector database and analyzer"""
-    global vector_db, analyzer
+    """
+    Initializes all backend components in the correct order.
+    This function is called once when the Flask app starts.
+    """
+    global cache, vector_db, analyzer
     try:
-        vector_db = CompetencyVectorDB()
+        logger.info("Initializing application components...")
+        
+        # 1. Initialize the Cache Manager
+        cache = CacheManager(version='1.1', ttl_days=30)
+        
+        # 2. Initialize the Vector DB, passing the cache manager to it
+        vector_db = CompetencyVectorDB(cache_manager=cache)
+        # Note: In a production environment, you might not want to delete and
+        # recreate the index on every startup. This is suitable for development.
         vector_db.initialize_pinecone()
-        analyzer = CompetencyAnalyzer(vector_db)
-        logger.info("Components initialized successfully")
+        
+        # 3. Initialize the Analyzer with the vector_db instance
+        analyzer = CompetencyAnalyzer(vector_db=vector_db)
+        
+        logger.info("✅ All components initialized successfully.")
+        
     except Exception as e:
-        logger.error(f"Error initializing components: {e}")
+        logger.error(f"❌ Critical error during component initialization: {e}", exc_info=True)
+        # In a real app, you might want to exit if components fail to initialize
         raise
+
+# --- API Endpoints ---
+
+@app.route("/")
+def homepage():
+    return render_template("index.html")
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "message": "Competency Model Chatbot API is running"
-    })
-
-@app.route("/api/analyze-job", methods=["POST"])
-def analyze_job():
-    """Analyze a job role and return competency framework"""
-    try:
-        data = request.get_json()
-        
-        if not data or "job_title" not in data:
-            return jsonify({
-                "error": "job_title is required"
-            }), 400
-        
-        job_title = data["job_title"].strip()
-        
-        if not job_title:
-            return jsonify({
-                "error": "job_title cannot be empty"
-            }), 400
-        
-        # Analyze the job role
-        result = analyzer.analyze_job_role(job_title)
-        
-        return jsonify({
-            "success": True,
-            "data": result 
-        })
-        
-    except Exception as e:
-        logger.error(f"Error analyzing job: {e}")
-        return jsonify({
-            "error": "Internal server error",
-            "message": str(e)
-        }), 500
-
-@app.route("/api/search-jobs", methods=["POST"])
-def search_jobs():
-    """Search for similar jobs based on query"""
-    try:
-        data = request.get_json()
-        
-        if not data or "query" not in data:
-            return jsonify({
-                "error": "query is required"
-            }), 400
-        
-        query = data["query"].strip()
-        top_k = data.get("top_k", 5)
-        
-        if not query:
-            return jsonify({
-                "error": "query cannot be empty"
-            }), 400
-        
-        # Search for similar jobs (now based on vectors enriched with abilities)
-        similar_jobs = vector_db.search_similar_jobs(query, top_k)
-        
-        return jsonify({
-            "success": True,
-            "data": {
-                "query": query,
-                "similar_jobs": similar_jobs
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error searching jobs: {e}")
-        return jsonify({
-            "error": "Internal server error",
-            "message": str(e)
-        }), 500
-
-@app.route("/api/job-competencies/<onet_soc_code>", methods=["GET"])
-def get_job_competencies(onet_soc_code):
-    """Get detailed competencies for a specific job"""
-    try:
-        # This will now return both skills and abilities
-        competencies = vector_db.get_job_competencies(onet_soc_code)
-        
-        return jsonify({
-            "success": True,
-            "data": {
-                "onet_soc_code": onet_soc_code,
-                "competencies": competencies # This 'competencies' now includes skills and abilities
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting job competencies: {e}")
-        return jsonify({
-            "error": "Internal server error",
-            "message": str(e)
-        }), 500
+    """Health check endpoint to confirm the API is running."""
+    return jsonify({"status": "healthy"})
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    """Chat endpoint for conversational interface"""
+    """
+    Main endpoint for the chat interface. It takes a user message, analyzes it
+    as a job query, and returns a structured response for the frontend.
+    """
     try:
         data = request.get_json()
-        
-        if not data or "message" not in data:
-            return jsonify({
-                "error": "message is required"
-            }), 400
-        
+        if not data or "message" not in data or not data["message"].strip():
+            return jsonify({"error": "A non-empty 'message' is required."}), 400
+            
         message = data["message"].strip()
+        logger.info(f"Received chat message for analysis: '{message}'")
+
+        # The analyzer is now robust enough to handle any query.
+        # It will find the best match and generate a detailed analysis.
+        analysis_result = analyzer.analyze_job_role(message)
         
-        if not message:
-            return jsonify({
-                "error": "message cannot be empty"
-            }), 400
-        
-        # Simple chat logic - analyze if it looks like a job title
-        if any(keyword in message.lower() for keyword in ["engineer", "manager", "analyst", "developer", "specialist", "coordinator", "director"]):
-            # Treat as job analysis request
-            result = analyzer.analyze_job_role(message)
-            
-            response = f"I found information about {message}. Here's a summary of the competency analysis:\n\n"
-            
-            if "job_analysis" in result:
-                best_match = result["job_analysis"]["best_match"]
-                response += f"Best match: {best_match['title']} (similarity: {best_match['score']:.2f})\n\n"
-            
-            if "recommendations" in result:
-                # The recommendations are already pre-formatted in _generate_recommendations
-                for rec in result["recommendations"]:
-                    response += f"{rec}\n"
-            
-            # NEW: Add the detailed formatted framework summary from the backend
-            if "formatted_framework_summary" in result:
-                response += result["formatted_framework_summary"]
-
-            response += "\nFor a full, structured breakdown of all skills and abilities, please refer to the 'analysis' field in the JSON response."
-
-            print(f"Response: {response}") 
-            print(f"Result: {result}")
-            print(f"Type: job_analysis")
-
-            logger.info(f"first block ======== Chat response: {response}")
-            logger.info(f"first block ======== Analysis result: {result}")
-            logger.info(f"first block ======== Type: job_analysis")
-            return jsonify({
-                "success": True,
+        if "error" in analysis_result:
+             return jsonify({
+                "success": True, # Return success=true so frontend can display the message
                 "data": {
-                    "response": response,
-                    "analysis": result, # This 'analysis' object contains the full competency framework with skills and abilities
-                    "type": "job_analysis"
+                    "response": analysis_result["error"],
+                    "analysis": {},
+                    "type": "error"
                 }
             })
-        else:
-            # General search
-            similar_jobs = vector_db.search_similar_jobs(message, 3)
-            
-            if similar_jobs:
-                response = f"I found {len(similar_jobs)} jobs related to {message}:\n\n"
-                for i, job in enumerate(similar_jobs, 1):
-                    response += f"{i}. {job['title']} (similarity: {job['score']:.2f})\n"
-                response += "\nWould you like me to analyze any of these roles in detail?"
-            else:
-                response = f"I couldn't find any jobs directly related to {message}. Try being more specific or use job titles like 'Software Engineer' or 'Data Analyst'."
-            
-            print(f"Response: {response}")
-            print(f"Similar Jobs: {similar_jobs}")
-            print(f"Type: search")
-            logger.info(f"Chat response: {response}")
-            logger.info(f"Similar jobs: {similar_jobs}")
-            logger.info(f"Type: search")
-            return jsonify({
-                "success": True,
-                "data": {
-                    "response": response,
-                    "similar_jobs": similar_jobs,
-                    "type": "search"
-                }
-            })
-        
+
+        # Structure the response to match the frontend's expectations
+        response_data = {
+            "response": analysis_result.get("llm_generated_analysis", "No analysis available."),
+            "analysis": {
+                "structural_diagram": analysis_result.get("structural_diagram", {"nodes": [], "edges": []})
+            },
+            "type": "job_analysis"
+        }
+
+        print(f"Analysis result==============================:\n\n {response_data}\n\n\n =========================")
+
+        return jsonify({"success": True, "data": response_data})
+
     except Exception as e:
-        logger.error(f"Error in chat: {e}")
-        return jsonify({
-            "error": "Internal server error",
-            "message": str(e)
-        }), 500
+        logger.error(f"Error in /api/chat endpoint: {e}", exc_info=True)
+        return jsonify({"error": "An internal server error occurred."}), 500
 
-
-
-@app.route("/api/initialize-vectors", methods=["POST"])
-def initialize_vectors():
-    """Initialize vector database with job competency data"""
+@app.route("/api/rebuild-vectors", methods=["POST"])
+def rebuild_vectors():
+    """
+    An administrative endpoint to manually trigger the creation and upserting
+    of all job competency vectors. This is useful after a data update.
+    """
     try:
-        count = vector_db.create_job_competency_vectors()
-        
-        return jsonify({
-            "success": True,
-            "data": {
-                "message": f"Successfully created {count} job competency vectors",
-                "count": count
-            }
-        })
+        logger.info("Starting manual vector rebuild process...")
+        vector_db.create_job_competency_vectors()
+        message = "Successfully rebuilt and stored all job competency vectors in Pinecone."
+        logger.info(message)
+        return jsonify({"success": True, "message": message})
         
     except Exception as e:
-        logger.error(f"Error initializing vectors: {e}")
-        return jsonify({
-            "error": "Internal server error",
-            "message": str(e)
-        }), 500
+        logger.error(f"Error during manual vector rebuild: {e}", exc_info=True)
+        return jsonify({"error": "An internal server error occurred during vector rebuild."}), 500
 
+# --- Error Handlers ---
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({
-        "error": "Endpoint not found"
-    }), 404
+    return jsonify({"error": "Endpoint not found."}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({
-        "error": "Internal server error",
-        "message": str(error) # Include error message for debugging
-    }), 500
+    logger.error(f"Caught unhandled internal server error: {error}", exc_info=True)
+    return jsonify({"error": "An unexpected internal server error occurred."}), 500
 
+# --- Main Execution Block ---
 if __name__ == "__main__":
     try:
-        # Initialize components
+        # Initialize components before starting the app
         initialize_components()
         
-        # Run the app
+        # Run the Flask app
         port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port, debug=True)
+        # debug=False is recommended for anything resembling production
+        app.run(host="0.0.0.0", port=port, debug=False)
         
     except Exception as e:
-        logger.error(f"Failed to start application: {e}")
-        raise
+        logger.critical(f"❌ Failed to start the Flask application: {e}", exc_info=True)
