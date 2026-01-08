@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
@@ -101,25 +102,50 @@ class CompetencyVectorDB:
         self.index = None
         self.cache = cache_manager
 
-    def initialize_pinecone(self):
-        """Initialize Pinecone, deleting and recreating the index for a clean start."""
+    def initialize_pinecone(self, force_rebuild: bool = False):
+        """
+        Initialize Pinecone connection.
+        - If index exists with vectors, reuse it (preserves data across restarts)
+        - If index is empty or doesn't exist, create and populate it
+        - Use force_rebuild=True to delete and recreate the index
+        """
         if not PINECONE_API_KEY:
             raise ValueError("PINECONE_API_KEY environment variable not set.")
-            
+
         print(f"Initializing Pinecone with index: {self.index_name}...")
         self.pc = Pinecone(api_key=PINECONE_API_KEY)
-        
-        if self.index_name in self.pc.list_indexes().names():
-            print(f"Deleting existing index '{self.index_name}'...")
+
+        existing_indexes = self.pc.list_indexes().names()
+
+        if force_rebuild and self.index_name in existing_indexes:
+            print(f"Force rebuild requested. Deleting existing index '{self.index_name}'...")
             self.pc.delete_index(self.index_name)
-        
-        self.pc.create_index(
-            name=self.index_name,
-            dimension=self.model.get_sentence_embedding_dimension(),
-            metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-east-1')
-        )
+            existing_indexes = []
+
+        if self.index_name not in existing_indexes:
+            print(f"Creating new index '{self.index_name}'...")
+            self.pc.create_index(
+                name=self.index_name,
+                dimension=self.model.get_sentence_embedding_dimension(),
+                metric='cosine',
+                spec=ServerlessSpec(cloud='aws', region='us-east-1')
+            )
+        else:
+            print(f"Using existing index '{self.index_name}'.")
+
         self.index = self.pc.Index(self.index_name)
+
+        # Check if index has vectors, if not populate it
+        time.sleep(1)  # Give Pinecone a moment to be ready
+        stats = self.index.describe_index_stats()
+        vector_count = stats.get('total_vector_count', 0)
+
+        if vector_count == 0:
+            print(f"Index is empty. Populating with job competency vectors...")
+            self.create_job_competency_vectors()
+        else:
+            print(f"Index has {vector_count} vectors. Ready to use.")
+
         print("Pinecone initialized successfully.")
 
     @lru_cache(maxsize=256) # In-memory cache for the current session
